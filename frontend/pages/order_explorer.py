@@ -1,17 +1,19 @@
 
 import duckdb
 import streamlit as st
-from fsspec import filesystem
 import os
 
 
 GCS_BUCKET_NAME = os.getenv('GCS_BUCKET_NAME', 'quickcommerce-data-platform-salil')
 
-GOLD_FILE = f"gcs://{GCS_BUCKET_NAME}/gold/gold_order_summary.parquet"
+GOLD_FILE = f"https://storage.googleapis.com/{GCS_BUCKET_NAME}/gold/gold_order_summary.parquet"
 
+def connect_duckdb():
+    con = duckdb.connect()
+    con.execute("INSTALL httpfs")
+    con.execute("LOAD httpfs")
+    return con
 
-def get_gcs_filesystem():
-    return filesystem("gcs", token="anon")
 
 st.set_page_config(
     page_title="Order Explorer",
@@ -24,9 +26,7 @@ st.caption("Search, explore and inspect QuickCommerce order records")
 
 @st.cache_data
 def load_filter_options(file_path):
-    con = duckdb.connect()
-    gcs = get_gcs_filesystem()
-    con.register_filesystem(gcs)
+    con = connect_duckdb()
 
     cities = con.execute(
         "SELECT DISTINCT city FROM read_parquet(?) ORDER BY city",
@@ -51,9 +51,7 @@ def load_filter_options(file_path):
 
 @st.cache_data
 def load_vehicle_analysis(file_path, city, platform, status, order_id):
-    con = duckdb.connect()
-    gcs = get_gcs_filesystem()
-    con.register_filesystem(gcs)
+    con = connect_duckdb()
 
     conditions = ["vehicle_type IS NOT NULL"]
     params = [file_path]
@@ -183,9 +181,7 @@ where_clause = ""
 if conditions:
     where_clause = " WHERE " + " AND ".join(conditions)
 
-con = duckdb.connect()
-gcs = get_gcs_filesystem()
-con.register_filesystem(gcs)
+con = connect_duckdb()
 
 if not conditions:
     total_records = con.execute(
