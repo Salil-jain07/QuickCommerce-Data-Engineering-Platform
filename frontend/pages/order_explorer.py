@@ -7,6 +7,7 @@ import os
 GCS_BUCKET_NAME = os.getenv('GCS_BUCKET_NAME', 'quickcommerce-data-platform-salil')
 
 GOLD_FILE = f"https://storage.googleapis.com/{GCS_BUCKET_NAME}/gold/gold_order_summary.parquet"
+FILTER_FILE = f"https://storage.googleapis.com/{GCS_BUCKET_NAME}/gold/gold_order_filters.parquet"
 
 def connect_duckdb():
     con = duckdb.connect()
@@ -100,7 +101,7 @@ def load_vehicle_analysis(file_path, city, platform, status, order_id):
 
     return vehicle_data
 
-cities, platforms, statuses = load_filter_options(str(GOLD_FILE))
+cities, platforms, statuses = load_filter_options(str(FILTER_FILE))
 
 if "active_filters" not in st.session_state:
     st.session_state.active_filters = {

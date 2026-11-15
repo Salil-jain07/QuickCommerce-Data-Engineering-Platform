@@ -148,6 +148,23 @@ try:
 
     print("Uploaded to GCS: gold/gold_order_summary.parquet")
 
+    filter_file = GOLD_DIR / "gold_order_filters.parquet"
+
+    con.execute(f"""
+            COPY (
+                SELECT DISTINCT city, platform, order_status
+                FROM gold_order_summary
+            )
+            TO '{filter_file.as_posix()}'
+            (FORMAT PARQUET, COMPRESSION ZSTD)
+        """)
+
+    gcs.put(
+        str(filter_file),
+        f"{GCS_BUCKET_NAME}/gold/gold_order_filters.parquet"
+    )
+
+    print("Uploaded to GCS: gold/gold_order_filters.parquet")
 except Exception:
     import traceback
     traceback.print_exc()
