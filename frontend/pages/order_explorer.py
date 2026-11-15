@@ -4,9 +4,14 @@ import streamlit as st
 from fsspec import filesystem
 import os
 
+
 GCS_BUCKET_NAME = os.getenv('GCS_BUCKET_NAME', 'quickcommerce-data-platform-salil')
 
 GOLD_FILE = f"gcs://{GCS_BUCKET_NAME}/gold/gold_order_summary.parquet"
+
+
+def get_gcs_filesystem():
+    return filesystem("gcs", token="anon")
 
 st.set_page_config(
     page_title="Order Explorer",
@@ -20,7 +25,7 @@ st.caption("Search, explore and inspect QuickCommerce order records")
 @st.cache_data
 def load_filter_options(file_path):
     con = duckdb.connect()
-    gcs = filesystem("gcs", token="google_default")
+    gcs = get_gcs_filesystem()
     con.register_filesystem(gcs)
 
     cities = con.execute(
@@ -47,7 +52,7 @@ def load_filter_options(file_path):
 @st.cache_data
 def load_vehicle_analysis(file_path, city, platform, status, order_id):
     con = duckdb.connect()
-    gcs = filesystem("gcs", token="google_default")
+    gcs = get_gcs_filesystem()
     con.register_filesystem(gcs)
 
     conditions = ["vehicle_type IS NOT NULL"]
@@ -179,7 +184,7 @@ if conditions:
     where_clause = " WHERE " + " AND ".join(conditions)
 
 con = duckdb.connect()
-gcs = filesystem("gcs", token="google_default")
+gcs = get_gcs_filesystem()
 con.register_filesystem(gcs)
 
 if not conditions:
