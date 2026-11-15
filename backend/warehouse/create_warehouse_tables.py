@@ -10,34 +10,6 @@ load_dotenv(PROJECT_ROOT / ".env")
 engine = create_engine(os.getenv("DATABASE_URL"))
 
 tables = {
-    "gold_order_summary": """
-        CREATE TABLE IF NOT EXISTS quickcommerce.gold_order_summary (
-            order_id VARCHAR,
-            customer_id VARCHAR,
-            customer_name VARCHAR,
-            loyalty_tier VARCHAR,
-            store_id VARCHAR,
-            store_name VARCHAR,
-            store_type VARCHAR,
-            platform VARCHAR,
-            city VARCHAR,
-            order_datetime TIMESTAMP,
-            payment_method VARCHAR,
-            order_status VARCHAR,
-            total_items BIGINT,
-            total_quantity DOUBLE PRECISION,
-            item_sales_amount DOUBLE PRECISION,
-            payment_amount DOUBLE PRECISION,
-            payment_status VARCHAR,
-            distance_km DOUBLE PRECISION,
-            weather_condition VARCHAR,
-            traffic_condition VARCHAR,
-            vehicle_type VARCHAR,
-            delivery_duration_minutes DOUBLE PRECISION,
-            delivery_status VARCHAR
-        )
-    """,
-
     "gold_sales_summary": """
         CREATE TABLE IF NOT EXISTS quickcommerce.gold_sales_summary (
             order_date DATE,

@@ -1,11 +1,12 @@
 
-from pathlib import Path
-
 import duckdb
 import streamlit as st
+from fsspec import filesystem
+import os
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-GOLD_FILE = PROJECT_ROOT / "datasets" / "processed" / "gold" / "gold_order_summary.parquet"
+GCS_BUCKET_NAME = os.getenv('GCS_BUCKET_NAME', 'quickcommerce-data-platform-salil')
+
+GOLD_FILE = f"gcs://{GCS_BUCKET_NAME}/gold/gold_order_summary.parquet"
 
 st.set_page_config(
     page_title="Order Explorer",
@@ -16,14 +17,11 @@ st.set_page_config(
 st.title("Detailed Order Explorer")
 st.caption("Search, explore and inspect QuickCommerce order records")
 
-if not GOLD_FILE.exists():
-    st.error("Gold order summary file not found.")
-    st.stop()
-
-
 @st.cache_data
 def load_filter_options(file_path):
     con = duckdb.connect()
+    gcs = filesystem("gcs", token="google_default")
+    con.register_filesystem(gcs)
 
     cities = con.execute(
         "SELECT DISTINCT city FROM read_parquet(?) ORDER BY city",
@@ -49,6 +47,8 @@ def load_filter_options(file_path):
 @st.cache_data
 def load_vehicle_analysis(file_path, city, platform, status, order_id):
     con = duckdb.connect()
+    gcs = filesystem("gcs", token="google_default")
+    con.register_filesystem(gcs)
 
     conditions = ["vehicle_type IS NOT NULL"]
     params = [file_path]
@@ -179,15 +179,23 @@ if conditions:
     where_clause = " WHERE " + " AND ".join(conditions)
 
 con = duckdb.connect()
+gcs = filesystem("gcs", token="google_default")
+con.register_filesystem(gcs)
 
-count_query = (
-    "SELECT COUNT(*) FROM read_parquet(?)" + where_clause
-)
+if not conditions:
+    total_records = con.execute(
+        "SELECT num_rows FROM parquet_file_metadata(?) LIMIT 1",
+        [str(GOLD_FILE)]
+    ).fetchone()[0]
+else:
+    count_query = (
+        "SELECT COUNT(*) FROM read_parquet(?)" + where_clause
+    )
 
-total_records = con.execute(
-    count_query,
-    [str(GOLD_FILE)] + params
-).fetchone()[0]
+    total_records = con.execute(
+        count_query,
+        [str(GOLD_FILE)] + params
+    ).fetchone()[0]
 
 total_pages = max(1, (total_records + page_size - 1) // page_size)
 
@@ -201,7 +209,6 @@ offset = (st.session_state.current_page - 1) * page_size
 data_query = (
     "SELECT * FROM read_parquet(?)"
     + where_clause
-    + " ORDER BY order_id"
     + " LIMIT ? OFFSET ?"
 )
 
@@ -367,56 +374,65 @@ st.divider()
 
 st.subheader("🚚 Vehicle-wise Delivery Analysis")
 
-vehicle_data = load_vehicle_analysis(
-    str(GOLD_FILE),
-    filters["city"],
-    filters["platform"],
-    filters["status"],
-    filters["order_id"]
-)
+if st.button("Run Vehicle Analysis", type="primary"):
+    st.session_state["run_vehicle_analysis"] = True
 
-if not vehicle_data.empty:
+if st.session_state.get("run_vehicle_analysis", False):
 
-    total_vehicles = len(vehicle_data)
-    total_vehicle_orders = int(vehicle_data["total_orders"].sum())
-    total_delivered_orders = int(vehicle_data["delivered_orders"].sum())
-
-    overall_delivery_rate = (
-        total_delivered_orders / total_vehicle_orders * 100
-        if total_vehicle_orders > 0 else 0
-    )
-
-    st.markdown("#### Vehicle Performance KPIs")
-
-    col1, col2, col3, col4 = st.columns(4)
-
-    col1.metric("Vehicle Types", total_vehicles)
-    col2.metric("Total Orders", f"{total_vehicle_orders:,}")
-    col3.metric("Delivered Orders", f"{total_delivered_orders:,}")
-    col4.metric("Overall Delivery Rate", f"{overall_delivery_rate:.2f}%")
-
-    st.divider()
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.markdown("#### Orders by Vehicle Type")
-        st.bar_chart(
-            vehicle_data,
-            x="vehicle_type",
-            y="total_orders"
+    with st.spinner("Analyzing vehicle delivery performance..."):
+        vehicle_data = load_vehicle_analysis(
+            str(GOLD_FILE),
+            filters["city"],
+            filters["platform"],
+            filters["status"],
+            filters["order_id"]
         )
 
-    with col2:
-        st.markdown("#### Average Delivery Time")
-        st.bar_chart(
-            vehicle_data,
-            x="vehicle_type",
-            y="average_delivery_minutes"
+    if not vehicle_data.empty:
+
+        total_vehicles = len(vehicle_data)
+        total_vehicle_orders = int(vehicle_data["total_orders"].sum())
+        total_delivered_orders = int(vehicle_data["delivered_orders"].sum())
+
+        overall_delivery_rate = (
+            total_delivered_orders / total_vehicle_orders * 100
+            if total_vehicle_orders > 0 else 0
         )
 
-    st.markdown("#### Vehicle Performance Data")
-    st.dataframe(vehicle_data, use_container_width=True)
+        st.markdown("#### Vehicle Performance KPIs")
+
+        col1, col2, col3, col4 = st.columns(4)
+
+        col1.metric("Vehicle Types", total_vehicles)
+        col2.metric("Total Orders", f"{total_vehicle_orders:,}")
+        col3.metric("Delivered Orders", f"{total_delivered_orders:,}")
+        col4.metric("Overall Delivery Rate", f"{overall_delivery_rate:.2f}%")
+
+        st.divider()
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown("#### Orders by Vehicle Type")
+            st.bar_chart(
+                vehicle_data,
+                x="vehicle_type",
+                y="total_orders"
+            )
+
+        with col2:
+            st.markdown("#### Average Delivery Time")
+            st.bar_chart(
+                vehicle_data,
+                x="vehicle_type",
+                y="average_delivery_minutes"
+            )
+
+        st.markdown("#### Vehicle Performance Data")
+        st.dataframe(vehicle_data, use_container_width=True)
+
+    else:
+        st.info("No vehicle delivery data available.")
 
 else:
-    st.info("No vehicle delivery data available.")
+    st.info("Click Run Vehicle Analysis when you want to view vehicle performance.")
