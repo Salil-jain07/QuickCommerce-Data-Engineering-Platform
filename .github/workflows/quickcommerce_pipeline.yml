@@ -1,0 +1,133 @@
+name: QuickCommerce ETL Pipeline
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: quickcommerce-etl-pipeline
+  cancel-in-progress: false
+
+jobs:
+  run-pipeline:
+    name: Run QuickCommerce ETL
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      GCS_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      GCS_BUCKET_NAME: ${{ secrets.GCS_BUCKET_NAME }}
+      GCS_REGION: ${{ secrets.GCS_REGION }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-etl.txt
+
+      - name: Install ETL dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-etl.txt
+
+      - name: Authenticate with Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      # SILVER LAYER
+
+      - name: Silver - Customers
+        working-directory: backend/transformations
+        run: python bronze_to_silver.py
+
+      - name: Silver - Orders
+        working-directory: backend/transformations
+        run: python orders_to_silver.py
+
+      - name: Silver - Products
+        working-directory: backend/transformations
+        run: python products_to_silver.py
+
+      - name: Silver - Stores
+        working-directory: backend/transformations
+        run: python stores_to_silver.py
+
+      - name: Silver - Order Items
+        working-directory: backend/transformations
+        run: python order_items_to_silver.py
+
+      - name: Silver - Payments
+        working-directory: backend/transformations
+        run: python payments_to_silver.py
+
+      - name: Silver - Deliveries
+        working-directory: backend/transformations
+        run: python deliveries_to_silver.py
+
+      - name: Verify Silver Layer
+        working-directory: backend/transformations
+        run: python verify_silver.py
+
+      # GOLD LAYER
+
+      - name: Gold - Orders
+        working-directory: backend/transformations
+        run: python orders_to_gold.py
+
+      - name: Gold - Sales
+        working-directory: backend/transformations
+        run: python sales_to_gold.py
+
+      - name: Gold - Payments
+        working-directory: backend/transformations
+        run: python payments_to_gold.py
+
+      - name: Gold - Deliveries
+        working-directory: backend/transformations
+        run: python deliveries_to_gold.py
+
+      - name: Verify Gold Layer
+        working-directory: backend/transformations
+        run: python verify_gold.py
+
+      # NEON WAREHOUSE
+
+      - name: Test Neon Connection
+        run: python backend/warehouse/test_neon_connection.py
+
+      - name: Create Warehouse Schema
+        run: python backend/warehouse/create_schema.py
+
+      - name: Create Warehouse Tables
+        run: python backend/warehouse/create_warehouse_tables.py
+
+      - name: Load Gold Sales
+        run: python backend/warehouse/load_gold_sales.py
+
+      - name: Load Gold Payments
+        run: python backend/warehouse/load_gold_payments.py
+
+      - name: Load Gold Deliveries
+        run: python backend/warehouse/load_gold_deliveries.py
+
+      - name: Create Analytics Views
+        run: python backend/warehouse/create_analytics_views.py
+
+      - name: Verify Warehouse
+        run: python backend/warehouse/verify_warehouse.py
+
+      - name: Test Analytics Views
+        run: python backend/warehouse/test_analytics_views.py

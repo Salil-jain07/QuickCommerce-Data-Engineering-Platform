@@ -1,0 +1,53 @@
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+.venv-wsl/
+
+
+# Credentials
+.env
+*.json
+
+# Temporary files
+*.log
+.ipynb_checkpoints/
+
+# Generated datasets
+datasets/raw/*
+datasets/processed/*
+
+# Keep folder structure
+!datasets/raw/.gitkeep
+!datasets/processed/.gitkeep
+
+# IDE settings
+.idea/
+.vscode/
+
+# DuckDB databases
+*.duckdb
+*.duckdb.wal
+
+# Streamlit secrets
+.streamlit/secrets.toml
+
+# Other sensitive credentials
+*.pem
+*.key
+
+# Test and cache files
+.pytest_cache/
+.coverage
+
+
+# Airflow runtime files
+airflow/runtime/
+airflow/logs/
+airflow/airflow.cfg
+
+# Local documentation backups
+README_backup.md

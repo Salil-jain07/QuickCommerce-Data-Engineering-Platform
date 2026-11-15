@@ -1,0 +1,39 @@
+services:
+  dashboard:
+    build: .
+    container_name: quickcommerce-dashboard
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
+    volumes:
+      - ./datasets:/app/datasets:ro
+    restart: unless-stopped
+
+  airflow:
+    build:
+      context: .
+      dockerfile: airflow/Dockerfile
+    image: quickcommerce-airflow:3.4.0
+    container_name: quickcommerce-airflow
+    command: standalone
+    ports:
+      - "8080:8080"
+    environment:
+      QUICKCOMMERCE_PROJECT_ROOT: /opt/quickcommerce
+      PYTHONPATH: /opt/quickcommerce
+      GCS_BUCKET_NAME: quickcommerce-data-platform-salil
+      GOOGLE_CLOUD_PROJECT: project-655a0943-237b-4426-821
+      GOOGLE_APPLICATION_CREDENTIALS: /home/airflow/.config/gcloud/application_default_credentials.json
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__PARALLELISM: "1"
+      AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG: "1"
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/runtime:/opt/airflow
+      - ./backend:/opt/quickcommerce/backend
+      - ./datasets:/opt/quickcommerce/datasets
+      - /home/jains_salil7879/.config/gcloud:/home/airflow/.config/gcloud:ro
+    user: "1000:0"
+    mem_limit: 6g
+    restart: unless-stopped
