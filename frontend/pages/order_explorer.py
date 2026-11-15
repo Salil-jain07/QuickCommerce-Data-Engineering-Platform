@@ -28,22 +28,16 @@ st.caption("Search, explore and inspect QuickCommerce order records")
 def load_filter_options(file_path):
     con = connect_duckdb()
 
-    cities = con.execute(
-        "SELECT DISTINCT city FROM read_parquet(?) ORDER BY city",
-        [file_path]
-    ).fetchdf()["city"].tolist()
-
-    platforms = con.execute(
-        "SELECT DISTINCT platform FROM read_parquet(?) ORDER BY platform",
-        [file_path]
-    ).fetchdf()["platform"].tolist()
-
-    statuses = con.execute(
-        "SELECT DISTINCT order_status FROM read_parquet(?) ORDER BY order_status",
-        [file_path]
-    ).fetchdf()["order_status"].tolist()
+    rows = con.execute("""
+        SELECT DISTINCT city, platform, order_status
+        FROM read_parquet(?)
+    """, [file_path]).fetchall()
 
     con.close()
+
+    cities = sorted({row[0] for row in rows if row[0] is not None})
+    platforms = sorted({row[1] for row in rows if row[1] is not None})
+    statuses = sorted({row[2] for row in rows if row[2] is not None})
 
     return cities, platforms, statuses
 
@@ -122,6 +116,9 @@ if "current_page" not in st.session_state:
 if "page_size" not in st.session_state:
     st.session_state.page_size = 100
 
+if "page_cursors" not in st.session_state:
+    st.session_state.page_cursors = [None]
+
 st.subheader("Filter Orders")
 
 col1, col2, col3 = st.columns(3)
@@ -153,6 +150,7 @@ if st.button("Search Orders"):
 
     st.session_state.current_page = 1
     st.session_state.page_size = page_size
+    st.session_state.page_cursors = [None]
 
 filters = st.session_state.active_filters
 page_size = st.session_state.page_size
@@ -183,42 +181,37 @@ if conditions:
 
 con = connect_duckdb()
 
-if not conditions:
-    total_records = con.execute(
-        "SELECT num_rows FROM parquet_file_metadata(?) LIMIT 1",
-        [str(GOLD_FILE)]
-    ).fetchone()[0]
-else:
-    count_query = (
-        "SELECT COUNT(*) FROM read_parquet(?)" + where_clause
-    )
+cursor = st.session_state.page_cursors[
+    st.session_state.current_page - 1
+]
 
-    total_records = con.execute(
-        count_query,
-        [str(GOLD_FILE)] + params
-    ).fetchone()[0]
+query_conditions = conditions.copy()
+query_params = params.copy()
 
-total_pages = max(1, (total_records + page_size - 1) // page_size)
+if cursor is not None:
+    query_conditions.append("order_id > ?")
+    query_params.append(cursor)
 
-st.session_state.current_page = min(
-    st.session_state.current_page,
-    total_pages
+cursor_where = (
+    " WHERE " + " AND ".join(query_conditions)
+    if query_conditions else ""
 )
-
-offset = (st.session_state.current_page - 1) * page_size
 
 data_query = (
     "SELECT * FROM read_parquet(?)"
-    + where_clause
-    + " LIMIT ? OFFSET ?"
+    + cursor_where
+    + " ORDER BY order_id LIMIT ?"
 )
 
-results = con.execute(
+fetched_results = con.execute(
     data_query,
-    [str(GOLD_FILE)] + params + [page_size, offset]
+    [str(GOLD_FILE)] + query_params + [page_size + 1]
 ).fetchdf()
 
 con.close()
+
+has_next = len(fetched_results) > page_size
+results = fetched_results.iloc[:page_size].copy()
 
 st.divider()
 
@@ -226,9 +219,9 @@ st.subheader("🔍 Search Results")
 
 col1, col2, col3 = st.columns(3)
 
-col1.metric("Total Matching Orders", f"{total_records:,}")
-col2.metric("Current Page", f"{st.session_state.current_page} / {total_pages}")
-col3.metric("Records Per Page", page_size)
+col1.metric("Records on Current Page", f"{len(results):,}")
+col2.metric("Current Page", st.session_state.current_page)
+col3.metric("More Results Available", "Yes" if has_next else "No")
 
 st.dataframe(
     results,
@@ -270,8 +263,8 @@ if not results.empty:
 
     with col1:
         if st.button(
-                "Previous",
-                disabled=st.session_state.current_page <= 1
+            "Previous",
+            disabled=st.session_state.current_page <= 1
         ):
             st.session_state.current_page -= 1
             st.rerun()
@@ -279,15 +272,21 @@ if not results.empty:
     with col2:
         st.markdown(
             f"<div style='text-align:center'>Page "
-            f"{st.session_state.current_page} of {total_pages}</div>",
+            f"{st.session_state.current_page}</div>",
             unsafe_allow_html=True
         )
 
     with col3:
-        if st.button(
-                "Next",
-                disabled=st.session_state.current_page >= total_pages
-        ):
+        if st.button("Next", disabled=not has_next):
+            last_order_id = results["order_id"].iloc[-1]
+
+            st.session_state.page_cursors = (
+                st.session_state.page_cursors[
+                    :st.session_state.current_page
+                ]
+            )
+
+            st.session_state.page_cursors.append(last_order_id)
             st.session_state.current_page += 1
             st.rerun()
 

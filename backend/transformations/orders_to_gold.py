@@ -128,9 +128,13 @@ try:
     output_file = GOLD_DIR / "gold_order_summary.parquet"
 
     con.execute(f"""
-    COPY gold_order_summary
+    COPY (
+        SELECT *
+        FROM gold_order_summary
+        ORDER BY order_id
+    )
     TO '{output_file.as_posix()}'
-    (FORMAT PARQUET, COMPRESSION ZSTD)
+    (FORMAT PARQUET, COMPRESSION ZSTD, ROW_GROUP_SIZE 122880)
     """)
 
     print("Local file:", output_file)
