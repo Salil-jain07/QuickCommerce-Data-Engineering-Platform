@@ -18,7 +18,7 @@ con.execute(f"""
 CREATE OR REPLACE VIEW bronze_payments AS
 SELECT *
 FROM read_parquet(
-    gcs://{GCS_BUCKET_NAME}/bronze/generated/payments/*.parquet'
+    'gcs://{GCS_BUCKET_NAME}/bronze/generated/payments/*.parquet'
 )
 """)
 

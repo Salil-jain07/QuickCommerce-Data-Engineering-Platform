@@ -22,7 +22,7 @@ try:
     CREATE OR REPLACE VIEW bronze_deliveries AS
     SELECT *
     FROM read_parquet(
-        gcs://{GCS_BUCKET_NAME}/bronze/generated/deliveries/*.parquet'
+        'gcs://{GCS_BUCKET_NAME}/bronze/generated/deliveries/*.parquet'
     )
     """)
 
