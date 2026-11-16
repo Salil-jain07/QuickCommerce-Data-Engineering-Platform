@@ -958,8 +958,6 @@ The following practices are followed:
 
 **Salil Jain**
 
-Data Engineering Project
-
 ---
 
 *This project is developed for learning and portfolio demonstration purposes. All generated business data is synthetic.*
