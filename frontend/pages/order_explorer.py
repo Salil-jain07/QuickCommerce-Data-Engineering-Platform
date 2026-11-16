@@ -8,6 +8,7 @@ GCS_BUCKET_NAME = os.getenv('GCS_BUCKET_NAME', 'quickcommerce-data-platform-sali
 
 GOLD_FILE = f"https://storage.googleapis.com/{GCS_BUCKET_NAME}/gold/gold_order_summary.parquet"
 FILTER_FILE = f"https://storage.googleapis.com/{GCS_BUCKET_NAME}/gold/gold_order_filters.parquet"
+VEHICLE_FILE = f"https://storage.googleapis.com/{GCS_BUCKET_NAME}/gold/gold_vehicle_summary.parquet"
 
 def connect_duckdb():
     con = duckdb.connect()
@@ -45,10 +46,10 @@ def load_filter_options(file_path):
 
 
 @st.cache_data
-def load_vehicle_analysis(file_path, city, platform, status, order_id):
+def load_vehicle_analysis(file_path, city, platform, status):
     con = connect_duckdb()
 
-    conditions = ["vehicle_type IS NOT NULL"]
+    conditions = []
     params = [file_path]
 
     if city != "All":
@@ -63,34 +64,29 @@ def load_vehicle_analysis(file_path, city, platform, status, order_id):
         conditions.append("order_status = ?")
         params.append(status)
 
-    if order_id:
-        conditions.append("CAST(order_id AS VARCHAR) LIKE ?")
-        params.append(f"%{order_id}%")
-
-    where_clause = " AND ".join(conditions)
+    where_clause = (
+        "WHERE " + " AND ".join(conditions)
+        if conditions else ""
+    )
 
     vehicle_data = con.execute(
         f"""
         SELECT
             vehicle_type,
-            COUNT(*) AS total_orders,
-            COUNT(*) FILTER (
-                WHERE delivery_status = 'Delivered'
-            ) AS delivered_orders,
+            SUM(total_orders) AS total_orders,
+            SUM(delivered_orders) AS delivered_orders,
             ROUND(
-                AVG(delivery_duration_minutes) FILTER (
-                    WHERE delivery_status = 'Delivered'
-                ),
+                SUM(average_delivery_minutes * delivered_orders)
+                / NULLIF(SUM(delivered_orders), 0),
                 2
             ) AS average_delivery_minutes,
             ROUND(
-                100.0 * COUNT(*) FILTER (
-                    WHERE delivery_status = 'Delivered'
-                ) / COUNT(*),
+                100.0 * SUM(delivered_orders)
+                / NULLIF(SUM(total_orders), 0),
                 2
             ) AS delivery_rate
         FROM read_parquet(?)
-        WHERE {where_clause}
+        {where_clause}
         GROUP BY vehicle_type
         ORDER BY total_orders DESC
         """,
@@ -98,8 +94,8 @@ def load_vehicle_analysis(file_path, city, platform, status, order_id):
     ).fetchdf()
 
     con.close()
-
     return vehicle_data
+
 
 cities, platforms, statuses = load_filter_options(str(FILTER_FILE))
 
@@ -201,7 +197,7 @@ cursor_where = (
 data_query = (
     "SELECT * FROM read_parquet(?)"
     + cursor_where
-    + " ORDER BY order_id LIMIT ?"
+    + " LIMIT ?"
 )
 
 fetched_results = con.execute(
@@ -381,15 +377,18 @@ if st.button("Run Vehicle Analysis", type="primary"):
 if st.session_state.get("run_vehicle_analysis", False):
 
     with st.spinner("Analyzing vehicle delivery performance..."):
-        vehicle_data = load_vehicle_analysis(
-            str(GOLD_FILE),
-            filters["city"],
-            filters["platform"],
-            filters["status"],
-            filters["order_id"]
-        )
+        if filters["order_id"]:
+            st.warning("Clear the Order ID search to view vehicle-wise analysis.")
+            vehicle_data = None
+        else:
+            vehicle_data = load_vehicle_analysis(
+                str(VEHICLE_FILE),
+                filters["city"],
+                filters["platform"],
+                filters["status"]
+            )
 
-    if not vehicle_data.empty:
+    if vehicle_data is not None and not vehicle_data.empty:
 
         total_vehicles = len(vehicle_data)
         total_vehicle_orders = int(vehicle_data["total_orders"].sum())

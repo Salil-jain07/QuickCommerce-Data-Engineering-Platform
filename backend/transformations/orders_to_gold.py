@@ -165,6 +165,38 @@ try:
     )
 
     print("Uploaded to GCS: gold/gold_order_filters.parquet")
+
+    vehicle_file = GOLD_DIR / "gold_vehicle_summary.parquet"
+
+    con.execute(f"""
+        COPY (
+            SELECT
+                city,
+                platform,
+                order_status,
+                vehicle_type,
+                COUNT(*) AS total_orders,
+                COUNT(*) FILTER (
+                    WHERE delivery_status = 'Delivered'
+                ) AS delivered_orders,
+                AVG(delivery_duration_minutes) FILTER (
+                    WHERE delivery_status = 'Delivered'
+                ) AS average_delivery_minutes
+            FROM gold_order_summary
+            WHERE vehicle_type IS NOT NULL
+            GROUP BY city, platform, order_status, vehicle_type
+        )
+        TO '{vehicle_file.as_posix()}'
+        (FORMAT PARQUET, COMPRESSION ZSTD)
+    """)
+
+    gcs.put(
+        str(vehicle_file),
+        f"{GCS_BUCKET_NAME}/gold/gold_vehicle_summary.parquet"
+    )
+
+    print("Uploaded to GCS: gold/gold_vehicle_summary.parquet")
+
 except Exception:
     import traceback
     traceback.print_exc()
