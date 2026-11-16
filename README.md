@@ -1,5 +1,7 @@
 # QuickCommerce Data Engineering Platform
 
+**Live Demo:** [Open QuickCommerce Dashboard](https://quickcommerce-data-engineering-platform.onrender.com)
+
 An end-to-end data engineering platform that simulates large-scale quick-commerce operations inspired by Blinkit, Swiggy Instamart, and Flipkart Minutes.
 
 The project demonstrates how large volumes of synthetic transactional data can be generated, ingested, stored, transformed, validated, and converted into analytics-ready datasets using a modern cloud-based data engineering architecture.
@@ -189,7 +191,7 @@ The workflow is defined in:
 
 `.github/workflows/quickcommerce_pipeline.yml`
 
-It currently supports manual execution using `workflow_dispatch`. Cloud authentication and a successful GitHub-hosted end-to-end execution remain deployment requirements.
+It supports manual execution using `workflow_dispatch`. Google Cloud authentication is configured through Workload Identity Federation (WIF), and the GitHub-hosted workflow has been successfully executed against the configured GCS bucket and Neon PostgreSQL warehouse.
 
 ### 3.4 Cloud Data Storage and Analytics
 
